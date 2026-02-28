@@ -783,6 +783,40 @@ async function fetchMendoza(dominio) {
   return infracciones;
 }
 
+// ─── Córdoba Provincia (Policía Caminera via Rentas Córdoba) ─────────────────
+// Public REST API, no captcha, no auth. CORS restricted to rentascordoba.gob.ar
+// but irrelevant for server-side calls.
+async function fetchCordoba(dominio) {
+  const url = `https://app.rentascordoba.gob.ar/WSRestDeudaAnt/public/all/caminera/dominio/${dominio}`;
+  const res = await http.get(url, { headers: { Accept: 'application/json' } });
+
+  const body = res.data;
+  if (!body || body.status?.success !== 'TRUE') {
+    throw new Error('El portal de Córdoba devolvió un error inesperado.');
+  }
+  if (!body.data) return []; // "No se encontró información de deuda"
+
+  const infracciones = [];
+  for (const contribuyente of body.data.contribuyentes || []) {
+    const titular = `${contribuyente.nombre || ''} ${contribuyente.apellido || ''}`.trim();
+    for (const objeto of contribuyente.objetos || []) {
+      for (const ob of objeto.obligaciones || []) {
+        infracciones.push({
+          acta:        objeto.referencia1 || null,
+          fecha:       ob.fechaLabrado   || null,
+          descripcion: ob.descripcion    || null,
+          lugar:       null,
+          importe:     parseFloat(ob.saldoTotal || 0) || null,
+          estado:      (ob.estado || '').toLowerCase().includes('pag') ? 'pagada' : 'pendiente',
+          jurisdiccion: `Córdoba Caminera${titular ? ' · ' + titular : ''}`,
+        });
+      }
+    }
+  }
+
+  return infracciones;
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 app.get('/multas', async (req, res) => {
   const { dominio, fuente = 'ansv' } = req.query;
@@ -808,6 +842,7 @@ app.get('/multas', async (req, res) => {
       case 'neuquen':   infracciones = await fetchNeuquen(clean);   break;
       case 'santarosa': infracciones = await fetchSantaRosa(clean); break;
       case 'mendoza':   infracciones = await fetchMendoza(clean);   break;
+      case 'cordoba':   infracciones = await fetchCordoba(clean);   break;
       case 'ansv':
       default:          infracciones = await fetchANSV(clean);      break;
     }
