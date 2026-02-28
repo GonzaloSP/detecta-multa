@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consulta de Multas — Argentina</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f4f8; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 30px 20px; }
+  .card { background: white; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); padding: 36px; max-width: 640px; width: 100%; }
+
+  /* Header */
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+  .flag { font-size: 2.4rem; }
+  .header-text h1 { font-size: 1.4rem; color: #1a202c; font-weight: 700; }
+  .header-text p { font-size: 0.85rem; color: #718096; margin-top: 2px; }
+  hr { border: none; border-top: 1px solid #e2e8f0; margin-bottom: 24px; }
+
+  /* Form */
+  label { display: block; font-size: 0.78rem; font-weight: 700; color: #4a5568; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .field { margin-bottom: 18px; }
+  input[type="text"] { width: 100%; padding: 12px 16px; border: 2px solid #e2e8f0; border-radius: 10px; outline: none; transition: border-color 0.2s; font-size: 1rem; color: #1a202c; }
+  input[type="text"]:focus { border-color: #3182ce; }
+  .plate-input { font-size: 1.5rem !important; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; text-align: center; }
+  .format-tags { display: flex; gap: 8px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
+  .tag { background: #edf2f7; color: #4a5568; padding: 4px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+
+  /* Config bar */
+  .config-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 20px; }
+  .config-bar input { flex: 1; font-size: 0.82rem; padding: 9px 12px; }
+  .cfg-label { font-size: 0.72rem; color: #718096; margin-top: 4px; }
+
+  /* Buttons */
+  .btn { width: 100%; padding: 14px; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: #2b6cb0; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #2c5282; transform: translateY(-1px); }
+  .btn-primary:disabled { background: #a0aec0; cursor: not-allowed; transform: none; }
+
+  /* Error */
+  .error { background: #fff5f5; border: 1px solid #fc8181; color: #c53030; padding: 10px 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 14px; display: none; }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2.5px solid rgba(0,0,0,0.15); border-top-color: #3182ce; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
+  .spinner-white { border-color: rgba(255,255,255,0.4); border-top-color: white; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results container */
+  #results { margin-top: 28px; display: none; }
+  .results-title { font-size: 0.78rem; font-weight: 700; color: #4a5568; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px; }
+
+  /* Summary bar */
+  #summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+  .summary-chip { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }
+  .chip-loading { background: #edf2f7; color: #718096; }
+  .chip-ok     { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+  .chip-warn   { background: #fff5f5; color: #c53030; border: 1px solid #fc8181; }
+  .chip-err    { background: #fffaf0; color: #c05621; border: 1px solid #fbd38d; }
+
+  /* Source rows */
+  .source-row {
+    border: 1.5px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .source-row.state-ok   { border-color: #9ae6b4; }
+  .source-row.state-warn { border-color: #fc8181; }
+  .source-row.state-err  { border-color: #fbd38d; }
+  .source-row.state-skip { border-color: #e2e8f0; opacity: 0.6; }
+
+  .source-header {
+    display: flex; align-items: center; gap: 12px; padding: 13px 16px;
+    cursor: pointer; user-select: none;
+    transition: background 0.15s;
+  }
+  .source-header:hover { background: #f7fafc; }
+  .source-icon { font-size: 1.5rem; flex-shrink: 0; width: 32px; text-align: center; }
+  .source-info { flex: 1; min-width: 0; }
+  .source-name { font-size: 0.88rem; font-weight: 700; color: #2d3748; }
+  .source-sub  { font-size: 0.72rem; color: #718096; margin-top: 1px; }
+  .source-status { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .status-label { font-size: 0.78rem; font-weight: 700; }
+  .status-ok   { color: #276749; }
+  .status-warn { color: #c53030; }
+  .status-err  { color: #c05621; }
+  .status-loading { color: #718096; }
+  .chevron { font-size: 0.7rem; color: #a0aec0; transition: transform 0.2s; flex-shrink: 0; }
+  .chevron.open { transform: rotate(90deg); }
+
+  /* Infraction detail */
+  .source-detail { display: none; border-top: 1px solid #e2e8f0; background: #f7fafc; padding: 12px 16px; }
+  .source-detail.open { display: block; }
+
+  .multa-list { display: flex; flex-direction: column; gap: 10px; }
+  .multa-item { background: white; border: 1.5px solid #fed7d7; border-radius: 10px; padding: 13px 15px; }
+  .multa-top { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 4px; }
+  .multa-juris { font-weight: 700; font-size: 0.85rem; color: #2d3748; }
+  .multa-monto { font-weight: 700; font-size: 0.95rem; color: #c53030; }
+  .multa-detail { font-size: 0.78rem; color: #718096; margin-top: 6px; line-height: 1.7; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; margin-top: 6px; }
+  .badge-pendiente { background: #fed7d7; color: #c53030; }
+  .badge-pagada    { background: #c6f6d5; color: #276749; }
+
+  .no-multas-msg { font-size: 0.82rem; color: #68d391; font-weight: 600; }
+  .err-msg  { font-size: 0.82rem; color: #c05621; }
+  .skip-msg { font-size: 0.82rem; color: #a0aec0; font-style: italic; }
+
+  .note { font-size: 0.75rem; color: #a0aec0; margin-top: 20px; text-align: center; line-height: 1.5; }
+  .note a { color: #3182ce; }
+
+  /* Captcha warning */
+  .captcha-note { background: #fffaf0; border: 1px solid #fbd38d; border-radius: 8px; padding: 10px 14px; font-size: 0.78rem; color: #744210; margin-top: 14px; line-height: 1.6; display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div class="flag">🇦🇷</div>
+    <div class="header-text">
+      <h1>Consulta Nacional de Multas</h1>
+      <p>Consulta simultánea en todos los portales oficiales del país</p>
+    </div>
+  </div>
+  <hr>
+
+  <div class="field">
+    <label>URL de tu Backend</label>
+    <div class="config-bar">
+      <input type="text" id="backendUrl" value="http://localhost:3000" placeholder="http://localhost:3000" />
+    </div>
+    <span class="cfg-label">El backend actúa como proxy scraper (evita CORS y resuelve captchas via 2captcha).</span>
+  </div>
+
+  <div class="field">
+    <label>Dominio del Vehículo</label>
+    <input type="text" id="dominio" class="plate-input" placeholder="ABC 123" maxlength="10" autocomplete="off" spellcheck="false" />
+    <div class="format-tags">
+      <span class="tag">Viejo: ABC 123</span>
+      <span class="tag">Mercosur: AB 123 CD</span>
+    </div>
+  </div>
+
+  <div class="error" id="error-msg"></div>
+  <button class="btn btn-primary" id="btn-consultar" onclick="checkAllSources()">🔍 Consultar en todos los portales</button>
+
+  <div class="captcha-note" id="captcha-note">
+    ⏳ Los portales <strong>ANSV/SINAI, Prov. Buenos Aires, CABA y Rosario</strong> requieren resolver un captcha antes de cada consulta (~20–40 seg. por portal). Los demás portales responden de inmediato.
+  </div>
+
+  <div id="results">
+    <div class="results-title">Resultados por jurisdicción</div>
+    <div id="summary"></div>
+    <div id="source-list"></div>
+  </div>
+
+  <p class="note">Los datos provienen de los portales oficiales de cada jurisdicción.<br>
+  Esta herramienta requiere el <strong>backend proxy</strong> corriendo localmente.</p>
+</div>
+
+<script>
+  const SOURCES = [
+    { key: 'ansv',       name: 'ANSV / SINAI',          sub: 'Nacional · 150+ jurisdicciones', icon: '🏛️', captcha: true,  mercosurUnsupported: true  },
+    { key: 'pba',        name: 'Prov. Buenos Aires',    sub: 'infraccionesba.gba.gob.ar',       icon: '🌾', captcha: true,  mercosurUnsupported: false },
+    { key: 'caba',       name: 'CABA',                  sub: 'buenosaires.gob.ar',              icon: '🌆', captcha: true,  mercosurUnsupported: false },
+    { key: 'santafe',    name: 'Santa Fe',               sub: 'santafe.gov.ar',                  icon: '🌊', captcha: false, mercosurUnsupported: false },
+    { key: 'corrientes', name: 'Corrientes',             sub: 'corrientes.sigein.net',            icon: '🦜', captcha: false, mercosurUnsupported: false },
+    { key: 'entrerios',  name: 'Entre Ríos',             sub: 'monitoreovialentrerios.ar',        icon: '🌿', captcha: false, mercosurUnsupported: false },
+    { key: 'misiones',   name: 'Misiones',               sub: 'monitoreovialmisiones.info',       icon: '🌴', captcha: false, mercosurUnsupported: false },
+    { key: 'posadas',    name: 'Posadas',                sub: 'Municipio · sistema.posadas.gov.ar',      icon: '🏙️', captcha: false, mercosurUnsupported: false },
+    { key: 'chaco',      name: 'Chaco',                  sub: 'policiacaminera.chaco.gov.ar',            icon: '🌵', captcha: false, mercosurUnsupported: false },
+    { key: 'rosario',    name: 'Rosario',                sub: 'Municipio · rosario.gob.ar',              icon: '🏛️', captcha: true,  mercosurUnsupported: false },
+    { key: 'neuquen',    name: 'Neuquén Capital',        sub: 'Municipio · muninqn.gov.ar',              icon: '🏔️', captcha: false, mercosurUnsupported: false },
+    { key: 'santarosa',  name: 'Santa Rosa',             sub: 'Municipio · fotomultas.santarosa.gob.ar', icon: '🌾', captcha: false, mercosurUnsupported: false },
+    { key: 'mendoza',    name: 'Ciudad de Mendoza',      sub: 'Municipio · apex.ciudaddemendoza.gov.ar', icon: '🍇', captcha: false, mercosurUnsupported: false },
+  ];
+
+  const dominioInput = document.getElementById('dominio');
+  const errorEl      = document.getElementById('error-msg');
+  const btn          = document.getElementById('btn-consultar');
+
+  dominioInput.addEventListener('input', () => {
+    let v = dominioInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    let fmt = v;
+    if (/^[A-Z]{2}\d{1,3}([A-Z]{0,2})?$/.test(v) && !/^[A-Z]{3}/.test(v)) {
+      const p1 = v.slice(0,2), p2 = v.slice(2,5), p3 = v.slice(5,7);
+      fmt = p1 + (p2 ? ' '+p2 : '') + (p3 ? ' '+p3 : '');
+    } else {
+      const lts  = (v.match(/^[A-Z]+/)?.[0] || '').slice(0,3);
+      const digs = v.slice(lts.length).replace(/\D/g,'').slice(0,3);
+      fmt = lts + (digs ? ' '+digs : '');
+    }
+    dominioInput.value = fmt;
+    errorEl.style.display = 'none';
+  });
+
+  dominioInput.addEventListener('keydown', e => { if (e.key === 'Enter') checkAllSources(); });
+
+  function isValid(v) {
+    const c = v.replace(/\s/g,'').toUpperCase();
+    return /^[A-Z]{3}\d{3}$/.test(c) || /^[A-Z]{2}\d{3}[A-Z]{2}$/.test(c);
+  }
+  function isMercosur(dominio) {
+    return /^[A-Z]{2}\d{3}[A-Z]{2}$/.test(dominio.replace(/\s/g,'').toUpperCase());
+  }
+
+  function showError(msg) { errorEl.textContent = msg; errorEl.style.display = 'block'; }
+
+  function setLoading(on) {
+    btn.disabled = on;
+    btn.innerHTML = on
+      ? '<span class="spinner spinner-white" style="margin-right:8px"></span>Consultando...'
+      : '🔍 Consultar en todos los portales';
+  }
+
+  // ── Render scaffold: all source rows in "loading" state ──────────────────────
+  function renderScaffold(dominio) {
+    const el = document.getElementById('results');
+    el.style.display = 'block';
+
+    const isMerc = isMercosur(dominio);
+
+    // Summary chips
+    const sumEl = document.getElementById('summary');
+    sumEl.innerHTML = SOURCES.map(s => {
+      const skipped = s.mercosurUnsupported && isMerc;
+      return `<span class="summary-chip chip-loading" id="chip-${s.key}">
+        <span class="spinner" style="width:12px;height:12px;border-width:2px"></span>
+        ${s.name}
+      </span>`;
+    }).join('');
+
+    // Source rows
+    const listEl = document.getElementById('source-list');
+    listEl.innerHTML = SOURCES.map(s => `
+      <div class="source-row" id="row-${s.key}">
+        <div class="source-header" onclick="toggleDetail('${s.key}')">
+          <div class="source-icon">${s.icon}</div>
+          <div class="source-info">
+            <div class="source-name">${s.name}</div>
+            <div class="source-sub">${s.sub}</div>
+          </div>
+          <div class="source-status" id="status-${s.key}">
+            <span class="spinner" style="width:14px;height:14px;border-width:2px"></span>
+            <span class="status-label status-loading">Consultando…</span>
+          </div>
+          <div class="chevron" id="chev-${s.key}">▶</div>
+        </div>
+        <div class="source-detail" id="detail-${s.key}"></div>
+      </div>
+    `).join('');
+  }
+
+  function toggleDetail(key) {
+    const detail = document.getElementById('detail-'+key);
+    const chev   = document.getElementById('chev-'+key);
+    const isOpen = detail.classList.contains('open');
+    detail.classList.toggle('open', !isOpen);
+    chev.classList.toggle('open', !isOpen);
+  }
+
+  // ── Update a single source row after result arrives ──────────────────────────
+  function updateSource(src, state, infracciones, errorMsg) {
+    const row    = document.getElementById('row-'+src.key);
+    const statEl = document.getElementById('status-'+src.key);
+    const detEl  = document.getElementById('detail-'+src.key);
+    const chip   = document.getElementById('chip-'+src.key);
+
+    row.classList.remove('state-ok','state-warn','state-err','state-skip');
+
+    if (state === 'ok') {
+      const n = infracciones.length;
+      if (n === 0) {
+        row.classList.add('state-ok');
+        statEl.innerHTML = `<span class="status-label status-ok">✅ Sin multas</span>`;
+        detEl.innerHTML  = `<p class="no-multas-msg">✅ No se registran infracciones para este dominio.</p>`;
+        chip.className   = 'summary-chip chip-ok';
+        chip.innerHTML   = `✅ ${src.name}`;
+      } else {
+        row.classList.add('state-warn');
+        const total = infracciones.reduce((s,i) => s+(i.importe||0), 0);
+        const totalStr = total ? ' · $'+total.toLocaleString('es-AR') : '';
+        statEl.innerHTML = `<span class="status-label status-warn">⚠️ ${n} infracción${n>1?'es':''}</span>`;
+        chip.className   = 'summary-chip chip-warn';
+        chip.innerHTML   = `⚠️ ${src.name}: ${n}`;
+
+        let items = infracciones.map(inf => {
+          const monto  = inf.importe ? '$'+Number(inf.importe).toLocaleString('es-AR') : 'S/D';
+          const estado = (inf.estado || 'pendiente').toLowerCase();
+          return `<div class="multa-item">
+            <div class="multa-top">
+              <span class="multa-juris">📍 ${inf.jurisdiccion || src.name}</span>
+              <span class="multa-monto">${monto}</span>
+            </div>
+            <div class="multa-detail">
+              ${inf.acta        ? `<strong>Acta:</strong> ${inf.acta}<br>`        : ''}
+              ${inf.fecha       ? `<strong>Fecha:</strong> ${inf.fecha}<br>`      : ''}
+              ${inf.descripcion ? `<strong>Infracción:</strong> ${inf.descripcion}<br>` : ''}
+              ${inf.lugar       ? `<strong>Lugar:</strong> ${inf.lugar}`           : ''}
+            </div>
+            <span class="badge ${estado==='pagada'?'badge-pagada':'badge-pendiente'}">${estado.toUpperCase()}</span>
+          </div>`;
+        }).join('');
+
+        detEl.innerHTML = `<div class="multa-list">${items}</div>`;
+        // Auto-expand when there are results
+        document.getElementById('detail-'+src.key).classList.add('open');
+        document.getElementById('chev-'+src.key).classList.add('open');
+      }
+    } else if (state === 'skip') {
+      row.classList.add('state-skip');
+      statEl.innerHTML = `<span class="status-label" style="color:#a0aec0">— Omitido</span>`;
+      detEl.innerHTML  = `<p class="skip-msg">${errorMsg}</p>`;
+      chip.className   = 'summary-chip';
+      chip.style.background = '#edf2f7'; chip.style.color = '#a0aec0';
+      chip.innerHTML   = `— ${src.name}`;
+    } else {
+      // error
+      row.classList.add('state-err');
+      statEl.innerHTML = `<span class="status-label status-err">❌ No disponible</span>`;
+      detEl.innerHTML  = `<p class="err-msg">❌ ${errorMsg}</p>`;
+      chip.className   = 'summary-chip chip-err';
+      chip.innerHTML   = `❌ ${src.name}: sin respuesta`;
+    }
+  }
+
+  // ── Main: fire all sources in parallel ───────────────────────────────────────
+  async function checkAllSources() {
+    errorEl.style.display = 'none';
+    const raw     = dominioInput.value.trim();
+    const backend = document.getElementById('backendUrl').value.trim().replace(/\/$/,'');
+
+    if (!isValid(raw)) { showError('Ingresá un dominio válido (ej: ABC 123 o AB 123 CD).'); return; }
+
+    const dominio = raw.replace(/\s/g,'').toUpperCase();
+    const merc    = isMercosur(dominio);
+
+    setLoading(true);
+    document.getElementById('captcha-note').style.display = 'block';
+    renderScaffold(dominio);
+
+    const fetches = SOURCES.map(async src => {
+      if (src.mercosurUnsupported && merc) {
+        updateSource(src, 'skip', null, 'Este portal solo acepta formato antiguo (ABC 123). Las patentes Mercosur no son compatibles.');
+        return;
+      }
+      try {
+        const res  = await fetch(`${backend}/multas?dominio=${dominio}&fuente=${src.key}`);
+        const data = await res.json();
+        if (!res.ok) {
+          updateSource(src, 'error', null, data.error || `El portal devolvió un error inesperado (código ${res.status}).`);
+        } else {
+          updateSource(src, 'ok', data.infracciones || []);
+        }
+      } catch(err) {
+        updateSource(src, 'error', null, `No se pudo conectar al backend (${backend}). Verificá que el servidor esté corriendo.`);
+      }
+    });
+
+    await Promise.allSettled(fetches);
+    setLoading(false);
+  }
+</script>
+</body>
+</html>
