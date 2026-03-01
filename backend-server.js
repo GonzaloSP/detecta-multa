@@ -942,24 +942,15 @@ async function fetchMendozaCaminera(dominio) {
 
 // ─── Salta Capital (DGR Salta — Multas de Tránsito) ───────────────────────────
 // Angular SPA at www.dgrmsalta.gov.ar (redirects to rentas.dgrmsalta.gov.ar).
-// REST API endpoint POST /api/automotores/multas requires reCAPTCHA v3 token.
-// Remarkably, the API also accepts any captcha value without server-side rejection,
-// so in practice the captcha check is only enforced on the frontend.
+// REST API endpoint POST /api/automotores/multas.
+// reCAPTCHA v3 is only enforced on the frontend — the backend accepts an empty token.
 // No Bearer token or session required.
 async function fetchSalta(dominio) {
   const API_BASE = 'https://rentas.dgrmsalta.gov.ar/api';
-  const SITE_KEY = '6LcO31EpAAAAACskh5BK2bB86lwBjRxTp5leeiz4';
-  const PAGE_URL = 'https://www.dgrmsalta.gov.ar/';
-
-  // Solve reCAPTCHA v3
-  console.log(`[Salta] Resolviendo reCAPTCHA v3 (sitekey: ${SITE_KEY})…`);
-  const captchaResult = await solver.recaptcha(SITE_KEY, PAGE_URL, { version: 'v3', action: 'automotor.consultaDominio', score: '0.7', invisible: true });
-  const captchaToken  = captchaResult.data;
-  console.log(`[Salta] reCAPTCHA v3 resuelto.`);
 
   const res = await http.post(
     `${API_BASE}/automotores/multas`,
-    { dominio, recaptcha: captchaToken },
+    { dominio, recaptcha: '' },
     {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       validateStatus: s => s === 200 || s === 404 || s === 400,

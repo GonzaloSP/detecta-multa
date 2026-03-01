@@ -142,7 +142,7 @@
   <button class="btn btn-primary" id="btn-consultar" onclick="checkAllSources()">🔍 Consultar en todos los portales</button>
 
   <div class="captcha-note" id="captcha-note">
-    ⏳ Los portales <strong>ANSV/SINAI, Prov. Buenos Aires, CABA, Rosario y Salta Capital</strong> requieren resolver un captcha antes de cada consulta (~20–40 seg. por portal). Los demás portales responden de inmediato.
+    ⏳ Los portales <strong>ANSV/SINAI, Prov. Buenos Aires, CABA y Rosario</strong> requieren resolver un captcha antes de cada consulta (~20–40 seg. por portal). Los demás portales responden de inmediato.
   </div>
 
   <div id="results">
@@ -172,7 +172,7 @@
     { key: 'mendoza',    name: 'Ciudad de Mendoza',      sub: 'Municipio · apex.ciudaddemendoza.gov.ar', icon: '🍇', captcha: false, mercosurUnsupported: false },
     { key: 'cordoba',         name: 'Córdoba',               sub: 'Provincia · app.rentascordoba.gob.ar',                   icon: '🌄', captcha: false, mercosurUnsupported: false },
     { key: 'mendozacaminera', name: 'Mendoza Caminera',       sub: 'Provincia · sistemas.seguridad.mendoza.gov.ar',           icon: '🍇', captcha: false, mercosurUnsupported: false },
-    { key: 'salta',           name: 'Salta Capital',          sub: 'Municipio · rentas.dgrmsalta.gov.ar',                     icon: '🌵', captcha: true,  mercosurUnsupported: false },
+    { key: 'salta',           name: 'Salta Capital',          sub: 'Municipio · rentas.dgrmsalta.gov.ar',                     icon: '🌵', captcha: false, mercosurUnsupported: false },
   ];
 
   const dominioInput = document.getElementById('dominio');
