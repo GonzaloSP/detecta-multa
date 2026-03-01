@@ -3,7 +3,7 @@
  * Scrapes official government portals (no public API exists).
  *
  * Endpoints:
- *   GET /multas?dominio=ABC123&fuente=ansv|pba|caba|santafe|posadas|corrientes|entrerios|misiones|chaco|rosario
+ *   GET /multas?dominio=ABC123&fuente=ansv|pba|caba|santafe|posadas|corrientes|entrerios|misiones|chaco|rosario|neuquen|santarosa|mendoza|cordoba|mendozacaminera|salta|neuquen|santarosa|mendoza|mendozacaminera|cordoba|salta
  *
  * Response shape:
  *   { infracciones: [ { acta, fecha, descripcion, lugar, importe, estado, jurisdiccion } ] }
@@ -783,6 +783,207 @@ async function fetchMendoza(dominio) {
   return infracciones;
 }
 
+// ─── Mendoza Caminera (Vial Caminera — Policía Caminera de Mendoza) ───────────
+// GeneXus Java 16 fullAjax portal. No reCAPTCHA required for lookups.
+// Three-step flow:
+//   1. GET initial page to obtain GX session cookies + GXState (GX_AJAX_KEY, AJAX_SECURITY_TOKEN, JWT).
+//   2. POST fullAjax DOMINIO.CLICK event (JSON body, AES-128-ECB encrypted URL param).
+//   3. POST fullAjax ENTER event with dominio (returns fine list in gxValues/gxGrids).
+//
+// URL: https://sistemas.seguridad.mendoza.gov.ar/webvialcaminera/servlet/com.pagosdeuda.wpdeudaonline
+async function fetchMendozaCaminera(dominio) {
+  const crypto = require('crypto');
+  const BASE_URL = 'https://sistemas.seguridad.mendoza.gov.ar/webvialcaminera/servlet/com.pagosdeuda.wpdeudaonline';
+
+  // AES-128-ECB encrypt a plaintext string using a 32-hex-char key.
+  // GeneXus pads the plaintext to a 16-byte boundary with null bytes (formatPlaintext).
+  function gxEncrypt(plaintext, hexKey) {
+    const key = Buffer.from(hexKey, 'hex');
+    const bytes = Buffer.from(plaintext, 'ascii');
+    const padded = Buffer.alloc(Math.ceil(bytes.length / 16) * 16, 0);
+    bytes.copy(padded);
+    const cipher = crypto.createCipheriv('aes-128-ecb', key, null);
+    cipher.setAutoPadding(false);
+    return Buffer.concat([cipher.update(padded), cipher.final()]).toString('hex');
+  }
+
+  // Helper: extract GXState JSON from HTML page
+  function extractGXState(html) {
+    const nameIdx = html.indexOf('name="GXState"');
+    if (nameIdx < 0) throw new Error('MendozaCaminera: GXState hidden field not found in page.');
+    const chunk = html.slice(nameIdx, nameIdx + 10000);
+    const m = chunk.match(/value='([\s\S]*?)'(?:\s*\/?>|\s*>)/);
+    if (!m) throw new Error('MendozaCaminera: could not extract GXState value.');
+    return JSON.parse(m[1].replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
+  }
+
+  // Step 1: GET the initial page to obtain GX session cookies and GXState tokens.
+  const jar = new CookieJar();
+  const homeResp = await http.get(BASE_URL, { jar, withCredentials: true });
+  const homeHtml = String(homeResp.data);
+
+  const gxState = extractGXState(homeHtml);
+  const gxAjaxKey           = gxState['GX_AJAX_KEY'];
+  const ajaxSecurityToken   = gxState['AJAX_SECURITY_TOKEN'];
+  const authJwt             = gxState['GX_AUTH_WPDEUDAONLINE'];
+  const websocketId         = gxState['GX_WEBSOCKET_ID'];
+
+  if (!gxAjaxKey || !ajaxSecurityToken || !authJwt) {
+    throw new Error('MendozaCaminera: tokens missing from GXState.');
+  }
+
+  // Encrypt "gxfullajaxEvt" with the AES key to build the URL query param.
+  const encryptedEvt = gxEncrypt('gxfullajaxEvt', gxAjaxKey);
+  const ajaxUrl = `${BASE_URL}?gxfullajaxEvt=${encryptedEvt}`;
+
+  const cookies = jar.getCookiesSync(BASE_URL).map(c => `${c.key}=${c.value}`).join('; ');
+  const ajaxHeaders = {
+    'Content-Type':         'application/json',
+    'Accept':               'application/json, text/javascript, */*; q=0.01',
+    'GxAjaxRequest':        '1',
+    'AJAX_SECURITY_TOKEN':  ajaxSecurityToken,
+    'X-GXAUTH-TOKEN':       authJwt,
+    'Origin':               'https://sistemas.seguridad.mendoza.gov.ar',
+    'Referer':              BASE_URL,
+    'Cookie':               cookies,
+  };
+
+  // Step 2: POST DOMINIO.CLICK to activate the plate search mode.
+  // Input parms for DOMINIO.CLICK (from EvtParms["DOMINIO.CLICK"][0]):
+  // [vPRMVALORTXT1, vPRMVALORTXT2, PRMCLAVE, vPRMCLAVE, PRMVALORTXT1, PRMVALORTXT2] — all empty.
+  const domClickBody = JSON.stringify({
+    MPage: false, cmpCtx: '', parms: ['', '', '', '', '', ''], hsh: [],
+    objClass: 'wpdeudaonline', pkgName: 'com.pagosdeuda',
+    events: ['DOMINIO.CLICK'],
+    gxstate: { GX_WEBSOCKET_ID: websocketId },
+    grids: {},
+  });
+  await http.post(ajaxUrl, domClickBody, { headers: ajaxHeaders });
+
+  // Step 3: POST ENTER event with the plate number.
+  // Input parms for ENTER (from EvtParms.ENTER[0]):
+  // [vCAPTCHAVISIBLE, GPXRECAPTCHA1_Response, vELECCION, vTIPOOBJETO, vOJTIDENTIFICADOR1, vCRITERIOBUSQUEDA, PRMCLAVE, PRMVALORTXT1]
+  const enterBody = JSON.stringify({
+    MPage: false, cmpCtx: '', parms: ['', '', '', 'DOM', dominio, 'DOMINIO:', '', ''], hsh: [],
+    objClass: 'wpdeudaonline', pkgName: 'com.pagosdeuda',
+    events: ['ENTER'],
+    gxstate: { GX_WEBSOCKET_ID: websocketId },
+    grids: {},
+  });
+  const enterResp = await http.post(ajaxUrl, enterBody, { headers: ajaxHeaders });
+  const result = enterResp.data;
+
+  // "No existe ninguna deuda" message → no fines
+  const messages = (result.gxMessages && (result.gxMessages.MAIN || result.gxMessages.W0077)) || [];
+  const noDebt = messages.some(m =>
+    typeof m.text === 'string' && /no existe ninguna deuda|no se encontr/i.test(m.text)
+  );
+  if (noDebt) return [];
+
+  const infracciones = [];
+
+  // The W0077 web component gxValues contains the fine list as AV14objetos (JSON string) or W0077Sdtdetalledeuda.
+  const gxValues = result.gxValues || [];
+  for (const ctx of gxValues) {
+    if (ctx.CmpContext !== 'W0077') continue;
+    const titular = ctx.AV9Titular || '';
+
+    // Prefer the structured grid W0077Sdtdetalledeuda over the raw JSON string.
+    const sdtList = ctx.W0077Sdtdetalledeuda || ctx['W0077vSDTDETALLEDEUDA'] || [];
+    if (sdtList.length > 0) {
+      sdtList.forEach(item => {
+        infracciones.push({
+          acta:        item.obnId    || item.concepto || null,
+          fecha:       item.vencimiento || null,
+          descripcion: [item.concepto, item.subConcepto].filter(Boolean).join(' - ') || null,
+          lugar:       null,
+          importe:     parseFloat(item.importeTotal || 0) || null,
+          estado:      (item.tipo || 'pendiente').toLowerCase().includes('pag') ? 'pagada' : 'pendiente',
+          jurisdiccion: `Mendoza Caminera${titular ? ' · ' + titular : ''}`,
+        });
+      });
+    } else {
+      // Fallback: parse AV14objetos JSON string
+      let objetos = [];
+      try { objetos = JSON.parse(ctx.AV14objetos || '[]'); } catch(_) {}
+      objetos.forEach(item => {
+        infracciones.push({
+          acta:        item.ObnId    || item.tasa || null,
+          fecha:       item.ocvfechavto || null,
+          descripcion: [item.concepto, item.subconcepto].filter(Boolean).join(' - ') || item.tasa || null,
+          lugar:       null,
+          importe:     parseFloat(item.cuotaDeudaTotal || item.saldoCap || 0) || null,
+          estado:      'pendiente',
+          jurisdiccion: `Mendoza Caminera${item.persona ? ' · ' + item.persona : (titular ? ' · ' + titular : '')}`,
+        });
+      });
+    }
+  }
+
+  // Also check gxHiddens for the W0077vOBJETOS JSON string (backup)
+  if (infracciones.length === 0 && result.gxHiddens && result.gxHiddens.W0077vOBJETOS) {
+    let objetos = [];
+    try { objetos = JSON.parse(result.gxHiddens.W0077vOBJETOS || '[]'); } catch(_) {}
+    objetos.forEach(item => {
+      infracciones.push({
+        acta:        item.ObnId || item.tasa || null,
+        fecha:       item.ocvfechavto || null,
+        descripcion: [item.concepto, item.subconcepto].filter(Boolean).join(' - ') || item.tasa || null,
+        lugar:       null,
+        importe:     parseFloat(item.cuotaDeudaTotal || item.saldoCap || 0) || null,
+        estado:      'pendiente',
+        jurisdiccion: 'Mendoza Caminera',
+      });
+    });
+  }
+
+  return infracciones;
+}
+
+// ─── Salta Capital (DGR Salta — Multas de Tránsito) ───────────────────────────
+// Angular SPA at www.dgrmsalta.gov.ar (redirects to rentas.dgrmsalta.gov.ar).
+// REST API endpoint POST /api/automotores/multas requires reCAPTCHA v3 token.
+// Remarkably, the API also accepts any captcha value without server-side rejection,
+// so in practice the captcha check is only enforced on the frontend.
+// No Bearer token or session required.
+async function fetchSalta(dominio) {
+  const API_BASE = 'https://rentas.dgrmsalta.gov.ar/api';
+  const SITE_KEY = '6LcO31EpAAAAACskh5BK2bB86lwBjRxTp5leeiz4';
+  const PAGE_URL = 'https://www.dgrmsalta.gov.ar/';
+
+  // Solve reCAPTCHA v3
+  console.log(`[Salta] Resolviendo reCAPTCHA v3 (sitekey: ${SITE_KEY})…`);
+  const captchaResult = await solver.recaptcha(SITE_KEY, PAGE_URL, { version: 'v3', action: 'automotor.consultaDominio', score: '0.7', invisible: true });
+  const captchaToken  = captchaResult.data;
+  console.log(`[Salta] reCAPTCHA v3 resuelto.`);
+
+  const res = await http.post(
+    `${API_BASE}/automotores/multas`,
+    { dominio, recaptcha: captchaToken },
+    {
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      validateStatus: s => s === 200 || s === 404 || s === 400,
+    }
+  );
+
+  // 404 with "no posée multas pendientes" → no fines
+  if (res.status === 404 || (res.data && /no pos[eé]{1,2} multas/i.test(res.data.message || ''))) return [];
+  if (res.status === 400) throw new Error(`Salta: ${res.data?.message || 'Dominio inválido.'}`);
+
+  const list = res.data?.multas || [];
+  if (!Array.isArray(list)) return [];
+
+  return list.map(i => ({
+    acta:        String(i.numeroObligacionImpuesto || i.acta || ''),
+    fecha:       i.fechaInfraccion ? new Date(i.fechaInfraccion).toISOString().slice(0,10) : null,
+    descripcion: [i.descripcion, i.articulo].filter(Boolean).join(' – ') || null,
+    lugar:       [i.calle, i.altura ? `N° ${i.altura}` : null].filter(Boolean).join(' ') || null,
+    importe:     parseFloat(i.importe || i.monto || 0) || null,
+    estado:      (i.estadoPlanPago || i.estado || 'pendiente').toLowerCase().includes('pag') ? 'pagada' : 'pendiente',
+    jurisdiccion: `Salta Capital${i.titular ? ' · ' + i.titular : ''}`,
+  }));
+}
+
 // ─── Córdoba Provincia (Policía Caminera via Rentas Córdoba) ─────────────────
 // Public REST API, no captcha, no auth. CORS restricted to rentascordoba.gob.ar
 // but irrelevant for server-side calls.
@@ -842,7 +1043,9 @@ app.get('/multas', async (req, res) => {
       case 'neuquen':   infracciones = await fetchNeuquen(clean);   break;
       case 'santarosa': infracciones = await fetchSantaRosa(clean); break;
       case 'mendoza':   infracciones = await fetchMendoza(clean);   break;
-      case 'cordoba':   infracciones = await fetchCordoba(clean);   break;
+      case 'cordoba':          infracciones = await fetchCordoba(clean);         break;
+      case 'mendozacaminera': infracciones = await fetchMendozaCaminera(clean); break;
+      case 'salta':           infracciones = await fetchSalta(clean);           break;
       case 'ansv':
       default:          infracciones = await fetchANSV(clean);      break;
     }
